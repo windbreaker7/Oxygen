@@ -1,0 +1,8 @@
+OXYGEN V2 LOGS
+--------------------
+[+] POV Locked to Center
+[+] Smoothness uses %
+[+] Bypass Scanner added
+--------------------
+[FUTURE] Silent Aim
+
