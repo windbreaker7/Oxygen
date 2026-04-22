@@ -1,27 +1,34 @@
--- [[ OXYGEN V2 - EXTENDED LOGS BUILD ]]
+-- [[ OXYGEN V2 - MANUAL BYPASS BUILD ]]
 local RS = game:GetService("RunService")
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local LP = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Bypass Initialization
-pcall(function()
-    hookfunction(RS.IsStudio, function() return true end)
-end)
+-- [[ BYPASS LOGIC FUNCTION ]]
+local function ApplyBypass()
+    local success, err = pcall(function()
+        hookfunction(RS.IsStudio, function() return true end)
+        
+        local DetRem = game:GetService("ReplicatedStorage"):FindFirstChild("ExecutorDetection")
+        local mt = getrawmetatable(game)
+        local oldNC = mt.__namecall
+        setreadonly(mt, false)
 
-local DetRem = game:GetService("ReplicatedStorage"):FindFirstChild("ExecutorDetection")
-local mt = getrawmetatable(game)
-local oldNC = mt.__namecall
-setreadonly(mt, false)
+        mt.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            if (self == DetRem or tostring(self) == "ExecutorDetection") and method == "FireServer" then
+                return nil 
+            end
+            return oldNC(self, ...)
+        end)
+        setreadonly(mt, true)
+    end)
+    return success
+end
 
-mt.__namecall = newcclosure(function(self, ...)
-    if (self == DetRem or tostring(self) == "ExecutorDetection") and getnamecallmethod() == "FireServer" then
-        return nil 
-    end
-    return oldNC(self, ...)
-end)
-setreadonly(mt, true)
+-- Initial Execution
+ApplyBypass()
 
 -- FOV Setup
 local FOVCircle = Drawing.new("Circle")
@@ -37,7 +44,7 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Window = Rayfield:CreateWindow({
    Name = "OXYGEN | V2",
    LoadingTitle = "Oxygen System",
-   LoadingStatus = "Syncing Data...",
+   LoadingStatus = "Initialising Security...",
    ConfigurationSaving = {Enabled = false},
    KeySystem = false 
 })
@@ -52,30 +59,21 @@ local AimTab = Window:CreateTab("Aimtouch", 4483362458)
 local TestTab = Window:CreateTab("Testing", 4483362458)
 local InfoTab = Window:CreateTab("Logs", 4483362458)
 
--- [[ LOGS TAB - EXTENDED VIEW ]]
+-- [[ LOGS TAB ]]
 InfoTab:CreateSection("System Information")
-
--- Paragraphs allow for much more text than standard labels
-local LogBox = InfoTab:CreateParagraph({Title = "Changelog & Updates", Content = "Connecting to GitHub..."})
+local LogBox = InfoTab:CreateParagraph({Title = "Changelog", Content = "Connecting..."})
 
 local function UpdateLogs()
     local success, result = pcall(function()
         return game:HttpGet("https://raw.githubusercontent.com/janjirapetkum-collab/Oxygen/refs/heads/main/Changelog.txt")
     end)
-    
     if success then
-        local timeStamp = os.date("%X")
-        LogBox:Set({Title = "Last Updated: " .. timeStamp, Content = result})
+        LogBox:Set({Title = "Live Updates ("..os.date("%X")..")", Content = result})
     else
-        LogBox:Set({Title = "Connection Error", Content = "Failed to fetch logs. Please check your internet or the GitHub link."})
+        LogBox:Set({Title = "Connection Error", Content = "Check GitHub Link Integrity."})
     end
 end
-
-InfoTab:CreateButton({
-    Name = "Force Refresh Logs", 
-    Callback = UpdateLogs
-})
-
+InfoTab:CreateButton({Name = "Refresh Logs", Callback = UpdateLogs})
 task.spawn(UpdateLogs)
 
 -- [[ VISUALS TAB ]]
@@ -109,14 +107,28 @@ AimTab:CreateSlider({
 })
 
 -- [[ TESTING TAB ]]
-TestTab:CreateSection("Integrity Check")
+TestTab:CreateSection("Manual Security Tools")
 local StatusLabel = TestTab:CreateLabel("Status: IDLE")
+
 TestTab:CreateButton({
-    Name = "Run Bypass Scanner",
+    Name = "Manual Bypass Re-Hook",
+    Callback = function()
+        local didWork = ApplyBypass()
+        if didWork then
+            Rayfield:Notify({Title = "Security", Content = "Metatable Hooks Re-Applied", Duration = 3})
+            StatusLabel:Set("Status: ✅ Bypass Re-Applied")
+        else
+            StatusLabel:Set("Status: ❌ Bypass Failed")
+        end
+    end,
+})
+
+TestTab:CreateButton({
+    Name = "Check Integrity",
     Callback = function()
         local ac_script = game:GetService("StarterPlayer").StarterPlayerScripts:FindFirstChild("AntiExecutor")
         local ac_remote = game:GetService("ReplicatedStorage"):FindFirstChild("ExecutorDetection")
-        StatusLabel:Set((ac_remote and ac_script) and "Status: ✅ Verified" or "Status: ⚠️ Components Missing")
+        StatusLabel:Set((ac_remote and ac_script) and "Status: ✅ Signatures Found" or "Status: ⚠️ Components Missing")
     end,
 })
 
@@ -179,4 +191,4 @@ RS.RenderStepped:Connect(function()
     end
 end)
 
-Rayfield:Notify({Title = "Oxygen", Content = "Logs Synced", Duration = 3})
+Rayfield:Notify({Title = "Oxygen", Content = "System Online", Duration = 3})
