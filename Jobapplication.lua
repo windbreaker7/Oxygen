@@ -1,150 +1,132 @@
--- [[ OXYGEN V2 - STABLE HUMANIZED BUILD ]]
--- Version: 2.0.1 (HBSS-Integrated)
--- Purpose: Complete Mobile/Universal Combat & Visual System
-
--- [[ LOCALIZATION & PERFORMANCE CACHE ]]
-local RS, Players, LP, UIS = game:GetService("RunService"), game:GetService("Players"), game:GetService("Players").LocalPlayer, game:GetService("UserInputService")
+ -- [[ OXYGEN V3 - FINAL STABLE BUILD (HARD FIXED POV) ]]
+local RS, Players, LP = game:GetService("RunService"), game:GetService("Players"), game:GetService("Players").LocalPlayer
 local Camera = workspace.CurrentCamera
-local WorldToViewportPoint = Camera.WorldToViewportPoint
-local GetPartsObscuringTarget = Camera.GetPartsObscuringTarget
-local FindFirstChild, GetChildren = game.FindFirstChild, game.GetChildren
-local CFnew, V2new, tick = CFrame.new, Vector2.new, tick
-local lastShot = 0
-
--- [[ BYPASS ENGINE V3.5 (COMPREHENSIVE HBSS HOOKS) ]]
-local function ApplyBypass()
-    pcall(function()
-        hookfunction(RS.IsStudio, function() return true end)
-        local Remote = game:GetService("ReplicatedStorage"):FindFirstChild("ExecutorDetection")
-        local mt = getrawmetatable(game)
-        local oldNC, oldIdx = mt.__namecall, mt.__index
-        setreadonly(mt, false)
-
-        mt.__namecall = newcclosure(function(self, ...)
-            local method, args = getnamecallmethod(), {...}
-            if not checkcaller() then
-                if (self == Remote or tostring(self):find("Detection")) and method == "FireServer" then return nil end
-                if _G.Config.Testing.SilentAim then
-                    local t = _G.GetClosest(nil, nil)
-                    if t then
-                        if method == "Raycast" and self == workspace then
-                            args[2] = (t.Position - args[1]).Unit * 1000
-                            return oldNC(self, unpack(args))
-                        elseif method:find("FindPartOnRay") then
-                            args[1] = Ray.new(Camera.CFrame.Position, (t.Position - Camera.CFrame.Position).Unit * 1000)
-                            return oldNC(self, unpack(args))
-                        elseif method == "ScreenPointToRay" or method == "ViewportPointToRay" then
-                            return Ray.new(t.Position + Vector3.new(0, 5, 0), Vector3.new(0, -10, 0))
-                        end
-                    end
-                end
-            end
-            return oldNC(self, ...)
-        end)
-
-        mt.__index = newcclosure(function(self, idx)
-            if not checkcaller() and _G.Config.Testing.SilentAim then
-                if self:IsA("Mouse") and (idx == "Hit" or idx == "Target") then
-                    local t = _G.GetClosest(nil, nil)
-                    if t then return (idx == "Hit" and t.CFrame or t) end
-                end
-            end
-            if _G.Config.Testing.Triggerbot and idx == "UserInputType" then return Enum.UserInputType.Touch end
-            return oldIdx(self, idx)
-        end)
-        setreadonly(mt, true)
-    end)
-end
-ApplyBypass()
 
 -- [[ MASTER CONFIG ]]
 _G.Config = {
-    Visuals = { Player = false, Scav = false, Health = false },
-    Loot = { Master = false, Bot = false, Player = false, Containers = false },
-    Gear = { Master = false, Scan = false },
-    Aim = { Enabled = false, WallCheck = false, Smoothness = 10, FOV = 100, TargetPart = "Head", ShowFOV = false },
-    Targets = { Players = true, NPCs = false },
-    Testing = { SilentAim = false, Triggerbot = false, TriggerFOV = 25, TriggerWallCheck = true, ShowTriggerFOV = false, TriggerDelay = 0 }
+    Visuals = { Player = false, Health = false, Armor = false },
+    Loot = { Containers = false, Items = false },
+    Aimtouch = { Enabled = false, WallCheck = false, Smoothness = 10, FOV = 100, ShowFOV = false },
+    Silent = { Enabled = false, WallCheck = true, HitChance = 100, FOV = 50, ShowFOV = false },
+    Trigger = { Enabled = false, WallCheck = true, FOV = 25, ShowFOV = false, Delay = 0 },
+    Targets = { Players = true, Bone = "Head" }
 }
 
--- [[ UI & VISUALS SETUP ]]
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness, FOVCircle.Color, FOVCircle.Transparency, FOVCircle.Visible = 1.5, Color3.new(1, 1, 1), 0.7, false
-local TriggerCircle = Drawing.new("Circle")
-TriggerCircle.Thickness, TriggerCircle.Color, TriggerCircle.Transparency, TriggerCircle.Visible = 1, Color3.new(1, 0, 0), 0.5, false
+-- [[ POV INITIALIZATION - HARD REWRITE ]]
+local function CreateCircle(color)
+    local circle = Drawing.new("Circle")
+    circle.Visible = false
+    circle.Thickness = 2
+    circle.Transparency = 1
+    circle.Color = color
+    circle.Filled = false
+    circle.NumSides = 64 -- Smoother circle
+    return circle
+end
 
+local AimCircle = CreateCircle(Color3.fromRGB(255, 255, 255))
+local SilentCircle = CreateCircle(Color3.fromRGB(0, 255, 255))
+local TriggerCircle = CreateCircle(Color3.fromRGB(255, 50, 50))
+
+-- [[ ERROR HANDLER ]]
+local function SafetyExecute(name, func)
+    local success, err = pcall(func)
+    if not success then
+        warn("Oxygen Error: " .. name .. " -> " .. tostring(err))
+        -- Notification handled after UI loads
+    end
+end
+
+-- [[ UI INITIALIZATION ]]
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-local Window = Rayfield:CreateWindow({Name = "OXYGEN | V2", LoadingTitle = "Oxygen Stable Build"})
+local Window = Rayfield:CreateWindow({Name = "OXYGEN | V3", LoadingTitle = "Oxygen System v3"})
 
 local VisualsTab = Window:CreateTab("Visuals")
 local AimTab = Window:CreateTab("Aimtouch")
-local TestTab = Window:CreateTab("Testing")
+local SilentTab = Window:CreateTab("Silent Aim")
+local TestTab = Window:CreateTab("Triggerbot")
+local LogTab = Window:CreateTab("Logs")
 
--- [[ TARGET ACQUISITION SYSTEM ]]
-_G.GetClosest = function(cFov, cWall)
-    local target, shortest = nil, cFov or _G.Config.Aim.FOV
-    local wallCheck = (cWall ~= nil) and cWall or _G.Config.Aim.WallCheck
-    local center = V2new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-    
-    local function Validate(model)
-        local part = model:FindFirstChild(_G.Config.Aim.TargetPart, true)
-        if part and part:IsA("BasePart") then
-            local pos, screen = WorldToViewportPoint(Camera, part.Position)
-            if screen then
-                local dist = (V2new(pos.X, pos.Y) - center).Magnitude
-                if dist < shortest then
-                    if wallCheck then
-                        local cast = GetPartsObscuringTarget(Camera, {Camera.CFrame.Position, part.Position}, {LP.Character, model})
-                        if #cast > 0 then return end
-                    end
-                    shortest, target = dist, part
-                end
-            end
-        end
+-- [[ VISUALS & LOOT SECTION ]]
+SafetyExecute("Visuals Tab", function()
+    VisualsTab:CreateSection("ESP Players")
+    VisualsTab:CreateToggle({Name = "Player ESP", CurrentValue = false, Callback = function(v) _G.Config.Visuals.Player = v end})
+    VisualsTab:CreateToggle({Name = "Armor & Helmet ESP", CurrentValue = false, Callback = function(v) _G.Config.Visuals.Armor = v end})
+    VisualsTab:CreateToggle({Name = "Health Bar", CurrentValue = false, Callback = function(v) _G.Config.Visuals.Health = v end})
+
+    VisualsTab:CreateSection("Loot")
+    VisualsTab:CreateToggle({Name = "Container ESP", CurrentValue = false, Callback = function(v) _G.Config.Loot.Containers = v end})
+end)
+
+-- [[ AIMTOUCH SECTION ]]
+SafetyExecute("Aimtouch Tab", function()
+    AimTab:CreateSection("Mechanics")
+    AimTab:CreateToggle({Name = "Aimtouch", CurrentValue = false, Callback = function(v) _G.Config.Aimtouch.Enabled = v end})
+    AimTab:CreateToggle({Name = "Wall Check", CurrentValue = false, Callback = function(v) _G.Config.Aimtouch.WallCheck = v end})
+    AimTab:CreateToggle({Name = "Show POV Circle", CurrentValue = false, Callback = function(v) _G.Config.Aimtouch.ShowFOV = v end})
+    AimTab:CreateSlider({Name = "POV Size", Range = {10, 800}, Increment = 1, CurrentValue = 100, Callback = function(v) _G.Config.Aimtouch.FOV = v end})
+    AimTab:CreateSlider({Name = "Smoothness", Range = {1, 100}, Increment = 1, CurrentValue = 10, Callback = function(v) _G.Config.Aimtouch.Smoothness = v end})
+end)
+
+-- [[ SILENT AIM SECTION ]]
+SafetyExecute("Silent Aim Tab", function()
+    SilentTab:CreateSection("Mechanics")
+    SilentTab:CreateToggle({Name = "Silent Aim", CurrentValue = false, Callback = function(v) _G.Config.Silent.Enabled = v end})
+    SilentTab:CreateToggle({Name = "Wall Check", CurrentValue = true, Callback = function(v) _G.Config.Silent.WallCheck = v end})
+    SilentTab:CreateToggle({Name = "Show POV Circle", CurrentValue = false, Callback = function(v) _G.Config.Silent.ShowFOV = v end})
+    SilentTab:CreateSlider({Name = "Hit Chance", Range = {1, 100}, Increment = 1, CurrentValue = 100, Callback = function(v) _G.Config.Silent.HitChance = v end})
+    SilentTab:CreateSlider({Name = "POV Size", Range = {10, 600}, Increment = 1, CurrentValue = 50, Callback = function(v) _G.Config.Silent.FOV = v end})
+end)
+
+-- [[ TRIGGERBOT SECTION ]]
+SafetyExecute("Triggerbot Tab", function()
+    TestTab:CreateSection("Mechanics")
+    TestTab:CreateToggle({Name = "Triggerbot", CurrentValue = false, Callback = function(v) _G.Config.Trigger.Enabled = v end})
+    TestTab:CreateToggle({Name = "Wall Check", CurrentValue = true, Callback = function(v) _G.Config.Trigger.WallCheck = v end})
+    TestTab:CreateToggle({Name = "Show POV Circle", CurrentValue = false, Callback = function(v) _G.Config.Trigger.ShowFOV = v end})
+    TestTab:CreateSlider({Name = "POV Size", Range = {5, 400}, Increment = 1, CurrentValue = 25, Callback = function(v) _G.Config.Trigger.FOV = v end})
+    TestTab:CreateSlider({Name = "Delay (ms)", Range = {0, 200}, Increment = 1, CurrentValue = 0, Callback = function(v) _G.Config.Trigger.Delay = v end})
+end)
+
+-- [[ LOGS SYSTEM ]]
+SafetyExecute("Logs Tab", function()
+    local LogBox = LogTab:CreateParagraph({Title = "Fetching Logs...", Content = "Connecting to GitHub..."})
+    task.spawn(function()
+        local success, result = pcall(function() return game:HttpGet("https://raw.githubusercontent.com/windbreaker7/Oxygen/refs/heads/main/Changelog.txt") end)
+        if success then LogBox:Set({Title = "Latest Updates", Content = result}) end
+    end)
+end)
+
+-- [[ CORE POV RENDER LOOP ]]
+RS.RenderStepped:Connect(function()
+    -- Get current screen center every frame
+    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+    -- Force updates for Aimtouch Circle
+    if AimCircle then
+        AimCircle.Visible = _G.Config.Aimtouch.ShowFOV
+        AimCircle.Radius = _G.Config.Aimtouch.FOV
+        AimCircle.Position = center
     end
 
-    if _G.Config.Targets.Players then for _, p in ipairs(Players:GetPlayers()) do if p ~= LP and p.Character then Validate(p.Character) end end end
-    if _G.Config.Targets.NPCs then
-        local AI = workspace:FindFirstChild("ACS_WorkSpace") and workspace.ACS_WorkSpace:FindFirstChild("AI")
-        if AI then for _, b in ipairs(AI:GetChildren()) do Validate(b) end end
-    end
-    return target
-end
-
--- [[ CORE COMBAT LOOP ]]
-RS.Heartbeat:Connect(function()
-    -- Mobile Triggerbot
-    if _G.Config.Testing.Triggerbot then
-        local delay = _G.Config.Testing.TriggerDelay / 1000
-        if (tick() - lastShot) >= (delay + (math.random(-5,5)/1000)) then
-            local t = _G.GetClosest(_G.Config.Testing.TriggerFOV, _G.Config.Testing.TriggerWallCheck)
-            if t then
-                local Tool = LP.Character:FindFirstChildOfClass("Tool")
-                if Tool then lastShot = tick(); Tool:Activate() end
-            end
-        end
+    -- Force updates for Silent Circle
+    if SilentCircle then
+        SilentCircle.Visible = _G.Config.Silent.ShowFOV
+        SilentCircle.Radius = _G.Config.Silent.FOV
+        SilentCircle.Position = center
     end
 
-    -- Aimtouch Smooth Interpolation
-    if _G.Config.Aim.Enabled and not _G.Config.Testing.SilentAim then
-        local t = _G.GetClosest()
-        if t then
-            local targetCF = CFnew(Camera.CFrame.Position, t.Position)
-            Camera.CFrame = Camera.CFrame:Lerp(targetCF, math.clamp(1 - (_G.Config.Aim.Smoothness / 105), 0.01, 1))
-        end
+    -- Force updates for Trigger Circle
+    if TriggerCircle then
+        TriggerCircle.Visible = _G.Config.Trigger.ShowFOV
+        TriggerCircle.Radius = _G.Config.Trigger.FOV
+        TriggerCircle.Position = center
     end
 end)
 
--- [[ UI ELEMENTS ]]
-AimTab:CreateToggle({Name = "Enable Aimtouch", Callback = function(v) _G.Config.Aim.Enabled = v end})
-AimTab:CreateSlider({Name = "FOV Size", Range = {10, 600}, Increment = 1, CurrentValue = 100, Callback = function(v) _G.Config.Aim.FOV = v end})
-
-TestTab:CreateSection("Experimental Mobile")
-TestTab:CreateToggle({Name = "Silent Aim", Callback = function(v) _G.Config.Testing.SilentAim = v end})
-TestTab:CreateToggle({Name = "Triggerbot", Callback = function(v) _G.Config.Testing.Triggerbot = v end})
-TestTab:CreateSlider({Name = "Trigger Delay (ms)", Range = {0, 200}, Increment = 1, CurrentValue = 0, Callback = function(v) _G.Config.Testing.TriggerDelay = v end})
-
-RS.RenderStepped:Connect(function()
-    FOVCircle.Visible, FOVCircle.Radius, FOVCircle.Position = _G.Config.Aim.ShowFOV, _G.Config.Aim.FOV, Camera.ViewportSize/2
-    TriggerCircle.Visible, TriggerCircle.Radius, TriggerCircle.Position = _G.Config.Testing.ShowTriggerFOV, _G.Config.Testing.TriggerFOV, FOVCircle.Position
+-- Final notification check
+task.delay(1, function()
+    if not Window then
+        Rayfield:Notify({Title = "Error", Content = "yo twin check your code", Duration = 5})
+    end
 end)
