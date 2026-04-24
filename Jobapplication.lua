@@ -25,7 +25,7 @@ local FOVCircle = Drawing.new("Circle")
 FOVCircle.Thickness = 1.5
 FOVCircle.Color = Color3.new(1, 1, 1)
 FOVCircle.Transparency = 0.8
-FOVCircle.Filled = false -- ENSURES IT IS NOT A FILLED CIRCLE
+FOVCircle.Filled = false
 FOVCircle.Visible = false
 FOVCircle.Radius = 100 
 
@@ -50,12 +50,16 @@ local AimTab = Window:CreateTab("Aimtouch")
 local TestTab = Window:CreateTab("Testing")
 local InfoTab = Window:CreateTab("Logs")
 
--- [[ LOGS SECTION ]]
+-- [[ LOGS SECTION - UPDATED TO WINDBREAKER7 ]]
 InfoTab:CreateSection("System Information")
 local LogBox = InfoTab:CreateParagraph({Title = "Changelog", Content = "Fetching data..."})
 local function SyncLogs()
-    local success, result = pcall(function() return game:HttpGet("https://raw.githubusercontent.com/janjirapetkum-collab/Oxygen/refs/heads/main/Changelog.txt") end)
-    if success then LogBox:Set({Title = "Update Log: "..os.date("%X"), Content = result}) end
+    local success, result = pcall(function() 
+        return game:HttpGet("https://raw.githubusercontent.com/windbreaker7/Oxygen/refs/heads/main/Changelog.txt") 
+    end)
+    if success then 
+        LogBox:Set({Title = "Update Log: "..os.date("%X"), Content = result}) 
+    end
 end
 InfoTab:CreateButton({Name = "Refresh Logs", Callback = SyncLogs})
 task.spawn(SyncLogs)
@@ -86,9 +90,8 @@ AimTab:CreateDropdown({Name = "Target Bone", Options = {"Head", "HumanoidRootPar
 AimTab:CreateSection("Mechanics")
 AimTab:CreateToggle({Name = "Enable Aimtouch", Callback = function(v) _G.Config.Aim.Enabled = v end})
 AimTab:CreateToggle({Name = "Wall Check", Callback = function(v) _G.Config.Aim.WallCheck = v end})
-AimTab:CreateToggle({Name = "Show POV Circle", Callback = function(v) _G.Config.Aim.ShowFOV = v end})
+AimTab:CreateToggle({Name = "Show FOV Circle", Callback = function(v) _G.Config.Aim.ShowFOV = v end})
 
--- UPDATED SLIDERS
 AimTab:CreateSlider({
     Name = "POV Size (px)", 
     Range = {10, 800}, 
