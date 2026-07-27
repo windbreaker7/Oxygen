@@ -906,9 +906,58 @@ RunService.RenderStepped:Connect(makeCClosure(function()
 end))
 
 -- ============================================================================
--- 7. LOAD & INITIALIZE IRIS
+-- 7. LOAD & INITIALIZE IRIS (WITH BACKGROUND IMAGE SUPPORT)
 -- ============================================================================
 local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/windbreaker7/Oxygen/refs/heads/main/iris_bundle.lua?" .. tick()))()
+
+-- Apply background transparency configs so workspace image is visible
+if Iris.UpdateGlobalConfig then
+    Iris.UpdateGlobalConfig({
+        WindowBg = Color3.fromRGB(15, 15, 18),
+        WindowBgTransparency = 0.65,
+        FrameBg = Color3.fromRGB(25, 25, 30),
+        FrameBgTransparency = 0.35,
+        Button = Color3.fromRGB(30, 30, 38),
+        ButtonHovered = Color3.fromRGB(45, 45, 55),
+        ButtonActive = Color3.fromRGB(0, 255, 140),
+        Header = Color3.fromRGB(20, 20, 25),
+        Text = Color3.fromRGB(240, 240, 240)
+    })
+end
+
+-- Helper: Attach local Delta workspace background image to an Iris window
+local function setDeltaWorkspaceBackground(irisWindow, fileName, opacity)
+    local windowFrame = irisWindow and irisWindow.Instance
+    if not windowFrame then return end
+
+    -- Verify file presence in workspace
+    if isfile and not isfile(fileName) then
+        warn("[Delta BG Warning] File not found in workspace: " .. tostring(fileName))
+        return
+    end
+
+    if windowFrame:FindFirstChild("IrisDeltaBG") then
+        windowFrame.IrisDeltaBG:Destroy()
+    end
+
+    local bg = Instance.new("ImageLabel")
+    bg.Name = "IrisDeltaBG"
+    if getcustomasset then
+        bg.Image = getcustomasset(fileName)
+    end
+    bg.Size = UDim2.new(1, 0, 1, 0)
+    bg.Position = UDim2.new(0, 0, 0, 0)
+    bg.BackgroundTransparency = 1
+    bg.ImageTransparency = opacity or 0.35
+    bg.ImageColor3 = Color3.fromRGB(180, 180, 180)
+    bg.ScaleType = Enum.ScaleType.Crop
+    
+    -- Ensure background renders behind UI elements
+    bg.ZIndex = 0
+    bg.Active = false
+
+    bg.Parent = windowFrame
+end
 
 if Iris.Init then
     Iris.Init()
@@ -926,7 +975,12 @@ end
 -- 8. RENDER UI
 -- ============================================================================
 Iris:Connect(makeCClosure(function()
-    Iris.Window({"Imgui Wannabes"})
+    local mainWindow = Iris.Window({"Imgui Wannabes"}, {
+        size = Iris.State and Iris.State(Vector2.new(520, 380)) or Vector2.new(520, 380)
+    })
+    
+    -- Attach background.jpeg from Delta workspace
+    setDeltaWorkspaceBackground(mainWindow, "background.jpeg", 0.30)
         
         Iris.Text({string.format("FPS: %d | Ping: %d ms", fps, ping)})
         Iris.Separator()
