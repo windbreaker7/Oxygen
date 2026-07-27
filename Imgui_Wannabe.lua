@@ -965,7 +965,11 @@ local function updateWindowBackground(windowInstance)
     if not windowInstance or not windowInstance.Instance then return end
     
     local frame = windowInstance.Instance
-    frame.ClipsDescendants = true
+    
+    -- Check if it's a GuiObject (Frame, etc.) to safely set ClipsDescendants
+    if frame:IsA("GuiObject") then
+        frame.ClipsDescendants = true
+    end
     
     local bg = frame:FindFirstChild("IrisDeltaBG")
     if not bg then
