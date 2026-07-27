@@ -1,20 +1,20 @@
--- [[ OXYGEN V2 LOADER ]]
+-- [[ IMGUI WANNABES LOADER ]]
 local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
 
 -- Cleanup existing UI
-if CoreGui:FindFirstChild("OxygenLoaderUI") then CoreGui.OxygenLoaderUI:Destroy() end
+if CoreGui:FindFirstChild("ImguiWannabesLoaderUI") then CoreGui.ImguiWannabesLoaderUI:Destroy() end
 
-local OxygenLoaderUI = Instance.new("ScreenGui")
-OxygenLoaderUI.Name = "OxygenLoaderUI"
-OxygenLoaderUI.Parent = CoreGui
+local LoaderUI = Instance.new("ScreenGui")
+LoaderUI.Name = "ImguiWannabesLoaderUI"
+LoaderUI.Parent = CoreGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 300, 0, 180)
 MainFrame.Position = UDim2.new(0.5, -150, 0.5, -90)
 MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
 MainFrame.BorderSizePixel = 0
-MainFrame.Parent = OxygenLoaderUI
+MainFrame.Parent = LoaderUI
 
 local Corner = Instance.new("UICorner", MainFrame)
 Corner.CornerRadius = UDim.new(0, 4)
@@ -26,7 +26,7 @@ Stroke.Thickness = 1.5
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 40)
 Title.BackgroundTransparency = 1
-Title.Text = "OXYGEN LOADER"
+Title.Text = "IMGUI WANNABES"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 18
 Title.Font = Enum.Font.Code
@@ -36,10 +36,10 @@ local LoadBtn = Instance.new("TextButton")
 LoadBtn.Size = UDim2.new(0.8, 0, 0, 45)
 LoadBtn.Position = UDim2.new(0.1, 0, 0.45, 0)
 LoadBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-LoadBtn.Text = "EXECUTE OXYGEN V2"
+LoadBtn.Text = "EXECUTE IMGUI WANNABES"
 LoadBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 LoadBtn.Font = Enum.Font.Code
-LoadBtn.TextSize = 14
+LoadBtn.TextSize = 13
 LoadBtn.AutoButtonColor = true
 LoadBtn.Parent = MainFrame
 
@@ -67,15 +67,14 @@ LoadBtn.MouseButton1Click:Connect(function()
     task.wait(0.5)
     
     local success, err = pcall(function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/windbreaker7/Oxygen/refs/heads/main/Jobapplication.lua"))()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/windbreaker7/Oxygen/refs/heads/main/Imgui_Wannabe.lua"))()
     end)
     
     if success then
-        OxygenLoaderUI:Destroy()
+        LoaderUI:Destroy()
     else
         LoadBtn.Text = "CRIT ERROR"
         Status.Text = "Source retrieval failed."
-        warn("Oxygen Loader Error: " .. tostring(err))
+        warn("Imgui Wannabes Loader Error: " .. tostring(err))
     end
 end)
-
