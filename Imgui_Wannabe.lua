@@ -47,8 +47,9 @@ end
 -- ============================================================================
 -- 2. CONFIGURATION & STATE
 -- ============================================================================
-local recoil_x = 0
-local recoil_y = 0
+-- Explicit Recoil Control Variables
+local recoil_x = 0 -- Multiplier for Horizontal Recoil (0 = Complete No Recoil)
+local recoil_y = 0 -- Multiplier for Vertical Recoil (0 = Complete No Recoil)
 
 local ESP_Config = {
     Enabled = true,
@@ -108,6 +109,7 @@ local Claymore_Cache = {}
 local Radar_Cache = {}
 local TrackedModels = {}
 
+-- Master Part Lists
 local SkeletonPartNames = {
     "arm1", "arm2", "head", "hip1", "hip2",
     "leg1", "leg2", "shoulder1", "shoulder2", "torso"
@@ -117,6 +119,7 @@ local GunPartNames = { "Barrel", "Base", "Grip", "Trigger", "Stock" }
 local AntiPersonnelPartNames = { "Cap", "Lever", "Ring" }
 local GrenadePartNames = { "Cap", "Root", "Ring" }
 
+-- FPS & Ping Calculation
 local fps = 0
 local ping = 0
 local frameCount = 0
@@ -136,6 +139,7 @@ RunService.RenderStepped:Connect(makeCClosure(function()
     end
 end))
 
+-- Helper function to load external No Recoil module and apply local recoil variables
 local function loadExternalNoRecoil()
     getgenv().RecoilX = recoil_x
     getgenv().RecoilY = recoil_y
@@ -460,6 +464,7 @@ RunService.RenderStepped:Connect(makeCClosure(function()
         local isTeammate = (targetPlayer.Team ~= nil and targetPlayer.Team == LocalPlayer.Team)
         local isAlive = hrp and (not humanoid or humanoid.Health > 0)
 
+        -- STANDARD 3D ESP
         if isAlive and not (ESP_Config.TeamCheck and isTeammate) then
             if not ESP_Cache[obj] then createEspObjects(obj) end
 
@@ -517,6 +522,7 @@ RunService.RenderStepped:Connect(makeCClosure(function()
             if ESP_Cache[obj] then clearEspObjects(obj) end
         end
 
+        -- RADAR ESP LOGIC
         if ESP_Config.RadarEnabled and isAlive and myHRP then
             if not (ESP_Config.RadarTeamCheck and isTeammate) then
                 if not Radar_Cache[obj] then createRadarDot(obj) end
@@ -550,7 +556,7 @@ RunService.RenderStepped:Connect(makeCClosure(function()
         end
     end
 
-    -- VIEWMODELS
+    -- VIEWMODELS (SKELETON, GUN & ANTI-PERSONNEL)
     local viewmodelsFolder = workspace:FindFirstChild("Viewmodels")
     if viewmodelsFolder then
         local activeViewmodels = {}
@@ -904,20 +910,6 @@ end))
 -- ============================================================================
 local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/windbreaker7/Oxygen/refs/heads/main/iris_bundle.lua?" .. tick()))()
 
-if Iris.UpdateGlobalConfig then
-    Iris.UpdateGlobalConfig({
-        WindowBg = Color3.fromRGB(15, 15, 18),
-        WindowBgTransparency = 0.5,
-        FrameBg = Color3.fromRGB(25, 25, 30),
-        FrameBgTransparency = 0.35,
-        Button = Color3.fromRGB(30, 30, 38),
-        ButtonHovered = Color3.fromRGB(45, 45, 55),
-        ButtonActive = Color3.fromRGB(0, 255, 140),
-        Header = Color3.fromRGB(20, 20, 25),
-        Text = Color3.fromRGB(240, 240, 240)
-    })
-end
-
 if Iris.Init then
     Iris.Init()
     
@@ -930,77 +922,11 @@ if Iris.Init then
     end))
 end
 
--- DELTA / ANDROID SPECIFIC FILE PATH RESOLVER
-local cachedAssetId = nil
-
-local function getDeltaAsset()
-    if cachedAssetId then return cachedAssetId end
-
-    local relativePath = "background.jpeg"
-    local fullPath = "/storage/emulated/0/Delta/Workspace/background.jpeg"
-
-    if getcustomasset then
-        -- 1. Try standard workspace relative path
-        if isfile and isfile(relativePath) then
-            local success, res = pcall(getcustomasset, relativePath)
-            if success and res then
-                cachedAssetId = res
-                return cachedAssetId
-            end
-        end
-
-        -- 2. Try direct absolute Delta path
-        local success, res = pcall(getcustomasset, fullPath)
-        if success and res then
-            cachedAssetId = res
-            return cachedAssetId
-        end
-    end
-
-    return nil
-end
-
--- Inject image inside Iris Window Frame
-local function updateWindowBackground(windowInstance)
-    if not windowInstance or not windowInstance.Instance then return end
-    
-    local frame = windowInstance.Instance
-    
-    -- Check if it's a GuiObject (Frame, etc.) to safely set ClipsDescendants
-    if frame:IsA("GuiObject") then
-        frame.ClipsDescendants = true
-    end
-    
-    local bg = frame:FindFirstChild("IrisDeltaBG")
-    if not bg then
-        local asset = getDeltaAsset()
-        if not asset then return end
-
-        bg = Instance.new("ImageLabel")
-        bg.Name = "IrisDeltaBG"
-        bg.Image = asset
-        bg.Size = UDim2.new(1, 0, 1, 0)
-        bg.Position = UDim2.new(0, 0, 0, 0)
-        bg.BackgroundTransparency = 1
-        bg.ImageTransparency = 0.35
-        bg.ImageColor3 = Color3.fromRGB(255, 255, 255)
-        bg.ScaleType = Enum.ScaleType.Crop
-        bg.ZIndex = 0
-        bg.Active = false
-        bg.Parent = frame
-    end
-end
-
 -- ============================================================================
 -- 8. RENDER UI
 -- ============================================================================
 Iris:Connect(makeCClosure(function()
-    local mainWindow = Iris.Window({"Imgui Wannabes"}, {
-        size = Iris.State and Iris.State(Vector2.new(520, 380)) or Vector2.new(520, 380)
-    })
-    
-    -- Inject background directly inside Iris Window Instance
-    updateWindowBackground(mainWindow)
+    Iris.Window({"Imgui Wannabes"})
         
         Iris.Text({string.format("FPS: %d | Ping: %d ms", fps, ping)})
         Iris.Separator()
@@ -1130,6 +1056,8 @@ Iris:Connect(makeCClosure(function()
             Iris.Tab({"Misc"})
                 local recoilTree = Iris.Tree({"Weapon Mods"})
                 if recoilTree.state.isUncollapsed.value then
+                    
+                    -- Input fields for recoil values
                     local inputX = Iris.InputText({"Recoil X Multiplier"})
                     local inputY = Iris.InputText({"Recoil Y Multiplier"})
                     
