@@ -878,7 +878,7 @@ RunService.RenderStepped:Connect(makeCClosure(function()
                 local primary = obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")
                 if primary then
                     local pos, onScreen = Camera:WorldToViewportPoint(primary.Position)
-                    if onScreen me
+                    if onScreen then
                         local dist = math.floor((myHRP and (myHRP.Position - primary.Position).Magnitude) or 0)
                         Claymore_Cache[obj].Text = string.format("[ Claymore | %dm ]", dist)
                         Claymore_Cache[obj].Position = Vector2.new(pos.X, pos.Y)
