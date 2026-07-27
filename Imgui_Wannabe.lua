@@ -6,13 +6,30 @@
 --   https://github.com/windbreaker7/Oxygen
 -- ============================================================================
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local Stats = game:GetService("Stats")
+-- Safe cloneref wrapper
+local getService = function(serviceName)
+    local service = game:GetService(serviceName)
+    if cloneref then
+        return cloneref(service)
+    end
+    return service
+end
+
+-- Safe newcclosure wrapper
+local makeCClosure = function(func)
+    if newcclosure then
+        return newcclosure(func)
+    end
+    return func
+end
+
+local Players = getService("Players")
+local RunService = getService("RunService")
+local Stats = getService("Stats")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
-local targetParent = (gethui and gethui()) or game:GetService("CoreGui")
+local targetParent = (gethui and gethui()) or getService("CoreGui")
 
 -- ============================================================================
 -- 1. CLEANUP OLD INSTANCES
@@ -52,6 +69,8 @@ local ESP_Config = {
     ThrownGrenadeESP = true,
     CameraESP = true,
     DefuserESP = true,
+    DroneESP = true,
+    ClaymoreESP = true,
     
     BoxColor = Color3.fromRGB(0, 255, 140),
     TracerColor = Color3.fromRGB(0, 255, 140),
@@ -60,7 +79,9 @@ local ESP_Config = {
     AntiPersonnelColor = Color3.fromRGB(255, 50, 50),
     GrenadeColor = Color3.fromRGB(255, 0, 0),
     CameraColor = Color3.fromRGB(0, 180, 255),
-    DefuserColor = Color3.fromRGB(0, 255, 100)
+    DefuserColor = Color3.fromRGB(0, 255, 100),
+    DroneColor = Color3.fromRGB(255, 200, 0),
+    ClaymoreColor = Color3.fromRGB(255, 30, 30)
 }
 
 local Misc_Config = {
@@ -72,6 +93,8 @@ local World_Cache = {}
 local Grenade_Cache = {}
 local Camera_Cache = {}
 local Defuser_Cache = {}
+local Drone_Cache = {}
+local Claymore_Cache = {}
 local TrackedModels = {}
 
 -- Master Part Lists
@@ -90,7 +113,7 @@ local ping = 0
 local frameCount = 0
 local lastUpdate = os.clock()
 
-RunService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(makeCClosure(function()
     frameCount = frameCount + 1
     local now = os.clock()
     if now - lastUpdate >= 1 then
@@ -102,16 +125,19 @@ RunService.RenderStepped:Connect(function()
             ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
         end)
     end
-end)
+end))
 
 -- Helper function to load external No Recoil module and apply local recoil variables
 local function loadExternalNoRecoil()
-    if Misc_Config.NoRecoilLoaded then return end
-    task.spawn(function()
-        -- Set global overrides if the module reads external scale values
-        getgenv().RecoilX = recoil_x
-        getgenv().RecoilY = recoil_y
+    getgenv().RecoilX = recoil_x
+    getgenv().RecoilY = recoil_y
 
+    if Misc_Config.NoRecoilLoaded then 
+        print(string.format("[+] Updated active No Recoil values to recoil_x = %s, recoil_y = %s", tostring(recoil_x), tostring(recoil_y)))
+        return 
+    end
+
+    task.spawn(makeCClosure(function()
         local success, err = pcall(function()
             loadstring(game:HttpGet("https://raw.githubusercontent.com/d2o-lang/OpenSource/refs/heads/main/n_recoil.lua"))()
         end)
@@ -121,7 +147,7 @@ local function loadExternalNoRecoil()
         else
             warn("[-] Failed to load No Recoil script:", err)
         end
-    end)
+    end))
 end
 
 -- ============================================================================
@@ -298,23 +324,25 @@ local function scanWorkspaceForPlayers()
     TrackedModels = foundModels
 end
 
-task.spawn(function()
+task.spawn(makeCClosure(function()
     while true do
         scanWorkspaceForPlayers()
         task.wait(0.5)
     end
-end)
+end))
 
 -- ============================================================================
 -- 5. RENDER LOOP
 -- ============================================================================
-RunService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(makeCClosure(function()
     if not ESP_Config.Enabled then
         for key in pairs(ESP_Cache) do clearEspObjects(key) end
         clearWorldCache()
         for _, text in pairs(Grenade_Cache) do text.Visible = false end
         for _, text in pairs(Camera_Cache) do text.Visible = false end
         for _, text in pairs(Defuser_Cache) do text.Visible = false end
+        for _, cache in pairs(Drone_Cache) do cache.Box.Visible = false cache.Text.Visible = false end
+        for _, text in pairs(Claymore_Cache) do text.Visible = false end
         return
     end
 
@@ -617,7 +645,124 @@ RunService.RenderStepped:Connect(function()
     else
         for obj, text in pairs(Defuser_Cache) do pcall(function() text:Remove() end) Defuser_Cache[obj] = nil end
     end
-end)
+
+    -- DRONE ESP
+    if ESP_Config.DroneESP then
+        local activeDrones = {}
+        for _, obj in ipairs(workspace:GetChildren()) do
+            if obj:IsA("Model") and obj.Name == "Drone" then
+                activeDrones[obj] = true
+
+                if not Drone_Cache[obj] then
+                    Drone_Cache[obj] = {
+                        Box = Drawing.new("Square"),
+                        Text = Drawing.new("Text")
+                    }
+                    Drone_Cache[obj].Box.Thickness = 1.5
+                    Drone_Cache[obj].Box.Color = ESP_Config.DroneColor
+                    Drone_Cache[obj].Box.Filled = false
+                    Drone_Cache[obj].Box.Visible = false
+
+                    Drone_Cache[obj].Text.Size = 13
+                    Drone_Cache[obj].Text.Center = true
+                    Drone_Cache[obj].Text.Outline = true
+                    Drone_Cache[obj].Text.Visible = false
+                end
+
+                local cache = Drone_Cache[obj]
+                local primary = obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")
+                local humanoid = obj:FindFirstChildOfClass("Humanoid")
+
+                if primary then
+                    local pos, onScreen = Camera:WorldToViewportPoint(primary.Position)
+                    if onScreen then
+                        local dist = math.floor((myHRP and (myHRP.Position - primary.Position).Magnitude) or 0)
+                        local scale = (1 / pos.Z) * 600
+                        local width = math.clamp(2 * scale, 8, 80)
+                        local height = math.clamp(2 * scale, 8, 80)
+
+                        cache.Box.Size = Vector2.new(width, height)
+                        cache.Box.Position = Vector2.new(pos.X - width / 2, pos.Y - height / 2)
+                        cache.Box.Visible = true
+
+                        local labelStr = string.format("[ Drone | %dm ]", dist)
+                        if humanoid then
+                            local hp = math.floor(humanoid.Health)
+                            local maxHp = math.floor(humanoid.MaxHealth)
+                            labelStr = labelStr .. string.format(" | %d/%d HP", hp, maxHp)
+                            cache.Text.Color = getHealthColor(humanoid.Health, humanoid.MaxHealth)
+                        else
+                            cache.Text.Color = ESP_Config.DroneColor
+                        end
+
+                        cache.Text.Text = labelStr
+                        cache.Text.Position = Vector2.new(pos.X, pos.Y - height / 2 - 15)
+                        cache.Text.Visible = true
+                    else
+                        cache.Box.Visible = false
+                        cache.Text.Visible = false
+                    end
+                else
+                    cache.Box.Visible = false
+                    cache.Text.Visible = false
+                end
+            end
+        end
+
+        for obj, cache in pairs(Drone_Cache) do
+            if not activeDrones[obj] or not obj.Parent then
+                pcall(function() cache.Box:Remove() end)
+                pcall(function() cache.Text:Remove() end)
+                Drone_Cache[obj] = nil
+            end
+        end
+    else
+        for obj, cache in pairs(Drone_Cache) do
+            pcall(function() cache.Box:Remove() end)
+            pcall(function() cache.Text:Remove() end)
+            Drone_Cache[obj] = nil
+        end
+    end
+
+    -- CLAYMORE ESP
+    if ESP_Config.ClaymoreESP then
+        local activeClaymores = {}
+        for _, obj in ipairs(workspace:GetChildren()) do
+            if obj:IsA("Model") and obj.Name == "Claymore" then
+                activeClaymores[obj] = true
+
+                if not Claymore_Cache[obj] then
+                    local text = Drawing.new("Text")
+                    text.Size = 13
+                    text.Center = true
+                    text.Outline = true
+                    text.Color = ESP_Config.ClaymoreColor
+                    Claymore_Cache[obj] = text
+                end
+
+                local primary = obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")
+                if primary then
+                    local pos, onScreen = Camera:WorldToViewportPoint(primary.Position)
+                    if onScreen then
+                        local dist = math.floor((myHRP and (myHRP.Position - primary.Position).Magnitude) or 0)
+                        Claymore_Cache[obj].Text = string.format("[ Claymore | %dm ]", dist)
+                        Claymore_Cache[obj].Position = Vector2.new(pos.X, pos.Y)
+                        Claymore_Cache[obj].Visible = true
+                    else Claymore_Cache[obj].Visible = false end
+                else Claymore_Cache[obj].Visible = false end
+            end
+        end
+
+        for obj, text in pairs(Claymore_Cache) do
+            if not activeClaymores[obj] or not obj.Parent then
+                pcall(function() text:Remove() end)
+                Claymore_Cache[obj] = nil
+            end
+        end
+    else
+        for obj, text in pairs(Claymore_Cache) do pcall(function() text:Remove() end) Claymore_Cache[obj] = nil end
+    end
+end))
 
 -- ============================================================================
 -- 6. LOAD & INITIALIZE IRIS
@@ -627,19 +772,19 @@ local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/windbrea
 if Iris.Init then
     Iris.Init()
     
-    task.defer(function()
+    task.defer(makeCClosure(function()
         local irisGui = playerGui:FindFirstChild("Iris") or playerGui:FindFirstChildOfClass("ScreenGui")
         if irisGui then
             irisGui.Name = "Oxygen_Iris_UI"
             irisGui.Parent = targetParent
         end
-    end)
+    end))
 end
 
 -- ============================================================================
 -- 7. RENDER UI
 -- ============================================================================
-Iris:Connect(function()
+Iris:Connect(makeCClosure(function()
     Iris.Window({"Imgui Wannabes"})
         
         Iris.Text({string.format("FPS: %d | Ping: %d ms", fps, ping)})
@@ -717,6 +862,16 @@ Iris:Connect(function()
                     if defuserToggle.numberChanged or defuserToggle.clicked then
                         ESP_Config.DefuserESP = defuserToggle.state.isChecked.value
                     end
+
+                    local droneToggle = Iris.Checkbox({"Drone ESP"})
+                    if droneToggle.numberChanged or droneToggle.clicked then
+                        ESP_Config.DroneESP = droneToggle.state.isChecked.value
+                    end
+
+                    local claymoreToggle = Iris.Checkbox({"Claymore ESP"})
+                    if claymoreToggle.numberChanged or claymoreToggle.clicked then
+                        ESP_Config.ClaymoreESP = claymoreToggle.state.isChecked.value
+                    end
                 end
                 Iris.End()
             Iris.End()
@@ -725,8 +880,26 @@ Iris:Connect(function()
             Iris.Tab({"Misc"})
                 local recoilTree = Iris.Tree({"Weapon Mods"})
                 if recoilTree.state.isUncollapsed.value then
-                    local recoilButton = Iris.Button({"Apply No Recoil (d2o-lang)"})
-                    if recoilButton.clicked then
+                    
+                    -- Input fields for recoil values
+                    local inputX = Iris.InputText({"Recoil X Multiplier"})
+                    local inputY = Iris.InputText({"Recoil Y Multiplier"})
+                    
+                    local applyButton = Iris.Button({"Apply Custom Values"})
+                    if applyButton.clicked then
+                        local numX = tonumber(inputX.state.text.value)
+                        local numY = tonumber(inputY.state.text.value)
+                        
+                        if numX then recoil_x = numX end
+                        if numY then recoil_y = numY end
+
+                        loadExternalNoRecoil()
+                    end
+
+                    local loadButton = Iris.Button({"Load/Apply Default No Recoil (0, 0)"})
+                    if loadButton.clicked then
+                        recoil_x = 0
+                        recoil_y = 0
                         loadExternalNoRecoil()
                     end
                     
@@ -774,4 +947,4 @@ Iris:Connect(function()
         Iris.End()
 
     Iris.End()
-end)
+end))
