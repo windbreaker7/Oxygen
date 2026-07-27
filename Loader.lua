@@ -288,7 +288,12 @@ LoadBtn.MouseButton1Click:Connect(function()
     }):Play()
 
     local success, err = pcall(function()
-        loadstring(game:HttpGet(moduleData.Url .. "?" .. tick()))()
+        local scriptRaw = game:HttpGet(moduleData.Url .. "?" .. tick())
+        local func, parseErr = loadstring(scriptRaw)
+        if not func then
+            error("Syntax Error in Target Script: " .. tostring(parseErr))
+        end
+        func()
     end)
 
     if success then
@@ -313,8 +318,8 @@ LoadBtn.MouseButton1Click:Connect(function()
         BarFill.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
         LoadBtn.Text = "CRITICAL ERROR"
         LoadBtn.TextColor3 = Color3.fromRGB(255, 80, 80)
-        Status.Text = "Execution failed!"
+        Status.Text = "Execution failed! (Check F9 Log)"
         Status.TextColor3 = Color3.fromRGB(255, 80, 80)
-        warn("Imgui Wannabes Loader Error: " .. tostring(err))
+        warn("[!] Imgui Wannabes Loader Error: " .. tostring(err))
     end
 end)
