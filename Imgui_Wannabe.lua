@@ -62,6 +62,17 @@ local ESP_Config = {
     Distance = true,
     Health = true,
     SkeletonESP = true,
+
+    -- Radar ESP
+    RadarEnabled = true,
+    RadarTeamCheck = true,
+    RadarSize = 150,
+    RadarMaxDistance = 200,
+    RadarPosition = Vector2.new(20, 80),
+    RadarBackground = true,
+    RadarBorder = true,
+    RadarColor = Color3.fromRGB(255, 50, 50),
+    RadarTeamColor = Color3.fromRGB(50, 255, 50),
     
     -- World ESP
     GunESP = true,
@@ -95,6 +106,7 @@ local Camera_Cache = {}
 local Defuser_Cache = {}
 local Drone_Cache = {}
 local Claymore_Cache = {}
+local Radar_Cache = {}
 local TrackedModels = {}
 
 -- Master Part Lists
@@ -133,7 +145,6 @@ local function loadExternalNoRecoil()
     getgenv().RecoilY = recoil_y
 
     if Misc_Config.NoRecoilLoaded then 
-        print(string.format("[+] Updated active No Recoil values to recoil_x = %s, recoil_y = %s", tostring(recoil_x), tostring(recoil_y)))
         return 
     end
 
@@ -143,7 +154,6 @@ local function loadExternalNoRecoil()
         end)
         if success then
             Misc_Config.NoRecoilLoaded = true
-            print(string.format("[+] Loaded d2o-lang No Recoil with recoil_x = %s, recoil_y = %s", tostring(recoil_x), tostring(recoil_y)))
         else
             warn("[-] Failed to load No Recoil script:", err)
         end
@@ -151,7 +161,59 @@ local function loadExternalNoRecoil()
 end
 
 -- ============================================================================
--- 3. DRAWING & CACHE MANAGEMENT
+-- 3. RADAR DRAWING ELEMENTS
+-- ============================================================================
+local RadarFrame = {
+    Background = Drawing.new("Square"),
+    Border = Drawing.new("Square"),
+    CenterCrossH = Drawing.new("Line"),
+    CenterCrossV = Drawing.new("Line"),
+    CenterDot = Drawing.new("Circle")
+}
+
+RadarFrame.Background.Filled = true
+RadarFrame.Background.Color = Color3.fromRGB(15, 15, 15)
+RadarFrame.Background.Transparency = 0.6
+RadarFrame.Background.Visible = false
+
+RadarFrame.Border.Filled = false
+RadarFrame.Border.Thickness = 1.5
+RadarFrame.Border.Color = Color3.fromRGB(60, 60, 60)
+RadarFrame.Border.Visible = false
+
+RadarFrame.CenterCrossH.Thickness = 1
+RadarFrame.CenterCrossH.Color = Color3.fromRGB(100, 100, 100)
+RadarFrame.CenterCrossH.Transparency = 0.5
+RadarFrame.CenterCrossH.Visible = false
+
+RadarFrame.CenterCrossV.Thickness = 1
+RadarFrame.CenterCrossV.Color = Color3.fromRGB(100, 100, 100)
+RadarFrame.CenterCrossV.Transparency = 0.5
+RadarFrame.CenterCrossV.Visible = false
+
+RadarFrame.CenterDot.Radius = 3
+RadarFrame.CenterDot.Filled = true
+RadarFrame.CenterDot.Color = Color3.fromRGB(0, 255, 140)
+RadarFrame.CenterDot.Visible = false
+
+local function createRadarDot(key)
+    if Radar_Cache[key] then return end
+    local dot = Drawing.new("Circle")
+    dot.Radius = 3.5
+    dot.Filled = true
+    dot.Visible = false
+    Radar_Cache[key] = dot
+end
+
+local function clearRadarDot(key)
+    if Radar_Cache[key] then
+        pcall(function() Radar_Cache[key]:Remove() end)
+        Radar_Cache[key] = nil
+    end
+end
+
+-- ============================================================================
+-- 4. DRAWING & CACHE MANAGEMENT
 -- ============================================================================
 local function createEspObjects(modelKey)
     if ESP_Cache[modelKey] then return end
@@ -288,7 +350,7 @@ local function getMapCameras()
 end
 
 -- ============================================================================
--- 4. FAST WORKSPACE SCANNER
+-- 5. FAST WORKSPACE SCANNER
 -- ============================================================================
 local function scanWorkspaceForPlayers()
     local foundModels = {}
@@ -321,6 +383,12 @@ local function scanWorkspaceForPlayers()
         end
     end
 
+    for cachedModel in pairs(Radar_Cache) do
+        if not cachedModel or not cachedModel.Parent or not foundModels[cachedModel] then
+            clearRadarDot(cachedModel)
+        end
+    end
+
     TrackedModels = foundModels
 end
 
@@ -332,11 +400,17 @@ task.spawn(makeCClosure(function()
 end))
 
 -- ============================================================================
--- 5. RENDER LOOP
+-- 6. RENDER LOOP
 -- ============================================================================
 RunService.RenderStepped:Connect(makeCClosure(function()
     if not ESP_Config.Enabled then
         for key in pairs(ESP_Cache) do clearEspObjects(key) end
+        for key in pairs(Radar_Cache) do clearRadarDot(key) end
+        RadarFrame.Background.Visible = false
+        RadarFrame.Border.Visible = false
+        RadarFrame.CenterCrossH.Visible = false
+        RadarFrame.CenterCrossV.Visible = false
+        RadarFrame.CenterDot.Visible = false
         clearWorldCache()
         for _, text in pairs(Grenade_Cache) do text.Visible = false end
         for _, text in pairs(Camera_Cache) do text.Visible = false end
@@ -348,16 +422,50 @@ RunService.RenderStepped:Connect(makeCClosure(function()
 
     local myHRP = LocalPlayer.Character and (LocalPlayer.Character:FindFirstChild("HumanoidRootPart") or LocalPlayer.Character:FindFirstChild("Torso"))
 
-    -- PLAYER ESP
+    -- RADAR FRAME RENDER
+    if ESP_Config.RadarEnabled then
+        local rSize = ESP_Config.RadarSize
+        local rPos = ESP_Config.RadarPosition
+        local center = rPos + Vector2.new(rSize / 2, rSize / 2)
+
+        RadarFrame.Background.Size = Vector2.new(rSize, rSize)
+        RadarFrame.Background.Position = rPos
+        RadarFrame.Background.Visible = ESP_Config.RadarBackground
+
+        RadarFrame.Border.Size = Vector2.new(rSize, rSize)
+        RadarFrame.Border.Position = rPos
+        RadarFrame.Border.Visible = ESP_Config.RadarBorder
+
+        RadarFrame.CenterCrossH.From = Vector2.new(rPos.X, center.Y)
+        RadarFrame.CenterCrossH.To = Vector2.new(rPos.X + rSize, center.Y)
+        RadarFrame.CenterCrossH.Visible = true
+
+        RadarFrame.CenterCrossV.From = Vector2.new(center.X, rPos.Y)
+        RadarFrame.CenterCrossV.To = Vector2.new(center.X, rPos.Y + rSize)
+        RadarFrame.CenterCrossV.Visible = true
+
+        RadarFrame.CenterDot.Position = center
+        RadarFrame.CenterDot.Visible = true
+    else
+        RadarFrame.Background.Visible = false
+        RadarFrame.Border.Visible = false
+        RadarFrame.CenterCrossH.Visible = false
+        RadarFrame.CenterCrossV.Visible = false
+        RadarFrame.CenterDot.Visible = false
+        for key in pairs(Radar_Cache) do clearRadarDot(key) end
+    end
+
+    -- PLAYER ESP & RADAR LOOP
     for obj, data in pairs(TrackedModels) do
         local targetPlayer = data.Player
         local hrp = data.HRP
         local humanoid = data.Humanoid
 
-        local isTeammate = (ESP_Config.TeamCheck and targetPlayer.Team ~= nil and targetPlayer.Team == LocalPlayer.Team)
+        local isTeammate = (targetPlayer.Team ~= nil and targetPlayer.Team == LocalPlayer.Team)
         local isAlive = hrp and (not humanoid or humanoid.Health > 0)
 
-        if isAlive and not isTeammate then
+        -- STANDARD 3D ESP
+        if isAlive and not (ESP_Config.TeamCheck and isTeammate) then
             if not ESP_Cache[obj] then createEspObjects(obj) end
 
             local cache = ESP_Cache[obj]
@@ -412,6 +520,39 @@ RunService.RenderStepped:Connect(makeCClosure(function()
             end
         else
             if ESP_Cache[obj] then clearEspObjects(obj) end
+        end
+
+        -- RADAR ESP LOGIC
+        if ESP_Config.RadarEnabled and isAlive and myHRP then
+            if not (ESP_Config.RadarTeamCheck and isTeammate) then
+                if not Radar_Cache[obj] then createRadarDot(obj) end
+                local dot = Radar_Cache[obj]
+
+                local relPos = hrp.Position - myHRP.Position
+                local camCFrame = Camera.CFrame
+                local localX = relPos:Dot(camCFrame.RightVector)
+                local localZ = relPos:Dot(camCFrame.LookVector)
+
+                local rSize = ESP_Config.RadarSize
+                local rRadius = rSize / 2
+                local maxDist = ESP_Config.RadarMaxDistance
+
+                local scale = rRadius / maxDist
+                local radarX = localX * scale
+                local radarY = -localZ * scale
+
+                local clampedX = math.clamp(radarX, -rRadius + 5, rRadius - 5)
+                local clampedY = math.clamp(radarY, -rRadius + 5, rRadius - 5)
+
+                local center = ESP_Config.RadarPosition + Vector2.new(rRadius, rRadius)
+                dot.Position = center + Vector2.new(clampedX, clampedY)
+                dot.Color = isTeammate and ESP_Config.RadarTeamColor or ESP_Config.RadarColor
+                dot.Visible = true
+            else
+                if Radar_Cache[obj] then clearRadarDot(obj) end
+            end
+        else
+            if Radar_Cache[obj] then clearRadarDot(obj) end
         end
     end
 
@@ -765,7 +906,7 @@ RunService.RenderStepped:Connect(makeCClosure(function()
 end))
 
 -- ============================================================================
--- 6. LOAD & INITIALIZE IRIS
+-- 7. LOAD & INITIALIZE IRIS
 -- ============================================================================
 local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/windbreaker7/Oxygen/refs/heads/main/iris_bundle.lua?" .. tick()))()
 
@@ -782,7 +923,7 @@ if Iris.Init then
 end
 
 -- ============================================================================
--- 7. RENDER UI
+-- 8. RENDER UI
 -- ============================================================================
 Iris:Connect(makeCClosure(function()
     Iris.Window({"Imgui Wannabes"})
@@ -831,6 +972,41 @@ Iris:Connect(makeCClosure(function()
                     local skelToggle = Iris.Checkbox({"Skeleton ESP"})
                     if skelToggle.numberChanged or skelToggle.clicked then
                         ESP_Config.SkeletonESP = skelToggle.state.isChecked.value
+                    end
+                end
+                Iris.End()
+
+                -- RADAR ESP
+                local radarTree = Iris.Tree({"2D Radar ESP"})
+                if radarTree.state.isUncollapsed.value then
+                    local radarToggle = Iris.Checkbox({"Enable Radar"})
+                    if radarToggle.numberChanged or radarToggle.clicked then
+                        ESP_Config.RadarEnabled = radarToggle.state.isChecked.value
+                    end
+
+                    local rTeamToggle = Iris.Checkbox({"Radar Team Check"})
+                    if rTeamToggle.numberChanged or rTeamToggle.clicked then
+                        ESP_Config.RadarTeamCheck = rTeamToggle.state.isChecked.value
+                    end
+
+                    local rBgToggle = Iris.Checkbox({"Show Background"})
+                    if rBgToggle.numberChanged or rBgToggle.clicked then
+                        ESP_Config.RadarBackground = rBgToggle.state.isChecked.value
+                    end
+
+                    local rBorderToggle = Iris.Checkbox({"Show Border"})
+                    if rBorderToggle.numberChanged or rBorderToggle.clicked then
+                        ESP_Config.RadarBorder = rBorderToggle.state.isChecked.value
+                    end
+
+                    local sizeSlider = Iris.SliderNum({"Radar Size (px)", 100, 400})
+                    if sizeSlider.numberChanged or sizeSlider.clicked then
+                        ESP_Config.RadarSize = sizeSlider.state.number.value
+                    end
+
+                    local distSlider = Iris.SliderNum({"Max Distance (m)", 50, 500})
+                    if distSlider.numberChanged or distSlider.clicked then
+                        ESP_Config.RadarMaxDistance = distSlider.state.number.value
                     end
                 end
                 Iris.End()
@@ -903,12 +1079,14 @@ Iris:Connect(makeCClosure(function()
                         loadExternalNoRecoil()
                     end
                     
-                    Iris.Text({string.format("Current Values: Recoil X = %s, Recoil Y = %s", tostring(recoil_x), tostring(recoil_y))})
-                    if Misc_Config.NoRecoilLoaded then
-                        Iris.Text({"Status: No Recoil Active"})
-                    else
-                        Iris.Text({"Status: Not Loaded"})
-                    end
+                    Iris.Text({function() return string.format("Current Values: Recoil X = %s, Recoil Y = %s", tostring(recoil_x), tostring(recoil_y)) end})
+                    Iris.Text({function() 
+                        if Misc_Config.NoRecoilLoaded then
+                            return "Status: No Recoil Active"
+                        else
+                            return "Status: Not Loaded"
+                        end
+                    end})
                 end
                 Iris.End()
             Iris.End()
